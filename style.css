@@ -53,6 +53,7 @@ body {
 
 .section-header h2 {
   margin-top: 0;
+  margin-bottom: 10px;
   padding-top: 0;
   color: #002512;
 }
@@ -383,6 +384,7 @@ body {
   justify-content: center;
   align-items: center;
   width: 100%;
+  padding-top: 40px;
 }
 
 @media (max-width: 800px) {
@@ -557,6 +559,219 @@ body {
   width: 100%;
   box-sizing: border-box;
   gap: 20px;
+}
+
+/* Induction Content Styles */
+.induction-content {
+  width: 100%;
+  max-width: 100%;
+  font-size: 10px;
+  line-height: 1.4;
+  color: #333;
+}
+
+.induction-title {
+  font-size: 14px;
+  font-weight: bold;
+  text-align: center;
+  margin-bottom: 12px;
+  color: #002512;
+}
+
+.induction-header {
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid #ddd;
+}
+
+.induction-content {
+  counter-reset: section-counter;
+}
+
+.induction-section {
+  margin-bottom: 15px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #eee;
+}
+
+.induction-section h2 {
+  font-size: 11px;
+  font-weight: bold;
+  color: #002512;
+  margin-bottom: 8px;
+  margin-top: 12px;
+  counter-increment: section-counter;
+  counter-reset: list-counter;
+}
+
+.induction-section h3 {
+  font-size: 10.5px;
+  font-weight: bold;
+  color: #333;
+  margin-top: 10px;
+  margin-bottom: 6px;
+}
+
+.induction-section h4 {
+  font-size: 10px;
+  font-weight: bold;
+  color: #333;
+  margin-top: 8px;
+  margin-bottom: 5px;
+}
+
+.induction-subsection {
+  margin-top: 6px;
+  margin-bottom: 6px;
+}
+
+.induction-field {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  margin-top: 4px;
+}
+
+/* Tab indentation classes */
+.tab-1 {
+  margin-left: 0;
+}
+
+.tab-2 {
+  margin-left: 40px;
+}
+
+.tab-3 {
+  margin-left: 55px;
+}
+
+.tab-4 {
+  margin-left: 70px;
+}
+
+.tab-5 {
+  margin-left: 85px;
+}
+
+.induction-field label {
+  font-weight: 500;
+  color: #333;
+  min-width: 100px;
+  flex: 0 1 auto;
+  font-size: 10px;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  max-width: 100%;
+}
+
+.induction-field span {
+  color: #666;
+  border-bottom: 1px solid #ccc;
+  min-width: 120px;
+  flex: 1;
+  padding: 1px 3px;
+  font-size: 10px;
+}
+
+.induction-note {
+  font-style: italic;
+  color: #666;
+  margin-top: 6px;
+  margin-bottom: 6px;
+  margin-left: 0;
+  font-size: 9.5px;
+}
+
+.induction-warning {
+  font-weight: bold;
+  color: #dc3545;
+  margin-top: 6px;
+  margin-bottom: 6px;
+  margin-left: 0;
+  font-size: 10px;
+}
+
+.induction-signature-section {
+  margin-top: 12px;
+  padding: 10px;
+  background: #f9f9f9;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.induction-signature-section p {
+  margin-bottom: 6px;
+}
+
+.induction-content ul {
+  margin-left: 10px;
+  margin-top: 4px;
+  margin-bottom: 4px;
+  list-style-type: lower-alpha;
+  padding-left: 20px;
+}
+
+.induction-content ol {
+  margin-left: 15px;
+  margin-top: 4px;
+  margin-bottom: 4px;
+  padding-left: 0;
+}
+
+.induction-content li {
+  margin-bottom: 3px;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.induction-content ol li {
+  counter-increment: list-counter;
+  list-style: none;
+  position: relative;
+  padding-left: 25px;
+  text-indent: 0;
+}
+
+.induction-content ol li.induction-field {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.induction-content ul li {
+  list-style-type: lower-alpha;
+  padding-left: 0;
+  position: static;
+}
+
+.induction-content ol li::before {
+  content: counter(section-counter) "." counter(list-counter) " ";
+  font-weight: bold;
+  position: absolute;
+  left: 0;
+}
+
+.induction-content ol ul {
+  list-style-type: lower-alpha;
+  margin-left: 10px;
+  padding-left: 20px;
+}
+
+.induction-content ol ul li {
+  list-style-type: lower-alpha;
+  padding-left: 0;
+}
+
+.induction-content ol ul li::before {
+  content: "";
+  display: none;
+}
+
+.induction-content p {
+  margin-bottom: 6px;
 }
 
 #pdfViewerContainer {

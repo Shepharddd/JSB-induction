@@ -1,13 +1,11 @@
 // SignaturePad Setup
 let signaturePad;
-let termsAgreed = false;
 
-// PDF.js variables
-let pdfDoc = null;
-let currentPage = 1;
-let totalPages = 0;
-let pdfScale = 1.0;
-let baseScale = 1.0;
+// Store contact information for vCard download
+let contactInfo = {
+  name: null,
+  phone: null
+};
 
 function initSignaturePad() {
   const canvas = document.getElementById('signatureCanvas');
@@ -39,93 +37,170 @@ function initSignaturePad() {
   });
 }
 
-// Initialize SignaturePad when page loads
-document.addEventListener('DOMContentLoaded', function() {
-  initSiteDisplay();
-  initPdfJs();
-  
-  // Initialize Lucide icons
-  if (typeof lucide !== 'undefined') {
-    lucide.createIcons();
-  }
-  // Don't load PDF automatically - wait for modal to open
-});
+// Initialize application
+async function init() {
+  await initLoading();
+  await initToast();
 
-// Initialize PDF.js worker
-function initPdfJs() {
-  // Wait for PDF.js to be loaded
-  if (typeof pdfjsLib !== 'undefined' && pdfjsLib.GlobalWorkerOptions) {
-    pdfjsLib.GlobalWorkerOptions.workerSrc = './modules/pdfjs-5.4.449-dist/build/pdf.worker.mjs';
-  } else {
-    // Retry after a short delay if PDF.js hasn't loaded yet
-    setTimeout(initPdfJs, 100);
+  const params = new URLSearchParams(window.location.search);
+  const site_param = params.get('site') || 'JSBHQ';
+
+  const { siteInfo, inductionData } = await fetchSiteData(site_param);
+
+  // Initialize site display (site name, date, contact info) and get site name
+  await initSiteDisplay(siteInfo);
+
+  // Load induction content and populate from JSON (pass site for API fetch)
+  await loadInductionContent(inductionData);
+  
+  // Initialize safety card remove buttons visibility
+  updateRemoveButtons();
+  setLoading(false);
+}
+
+// Run initialization when DOM is ready
+document.addEventListener('DOMContentLoaded', init);
+
+// Fetch site contact and induction data from API (single call)
+async function fetchSiteData(site) {
+  try {
+    // Fetch combined site data from single API endpoint
+    const response = await fetch(`https://default68237f8abf3c425bb92b9518c6d4bf.18.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/93c563fe47744e2990ec3ed2d3fc2ce0/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=1QzeWw_UP5WztZtyg4XqP-gsRsdqMQtm2R0hmU1xkXE`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ site: site })
+    });
+    
+    const data = await response.json();
+
+    // Separate the combined response into site contact and induction data
+    return { 
+      siteInfo: data.siteInfo || null,
+      inductionData: data.inductionData || null
+    };
+
+  } catch (error) {
+    console.error('Error fetching site data from API:', error);
   }
 }
 
-// Site contact information mapping
-const siteContacts = {
-  'JSBHQ': {
-    name: 'John Smith',
-    number: '0412 345 678'
-  },
-  // Add more site contacts as needed
-  'default': {
-    name: 'Site Manager',
-    number: '0400 000 000'
-  }
-};
-
 // Initialize site display from URL parameters
-function initSiteDisplay() {
-  const params = new URLSearchParams(window.location.search);
-  const site = params.get('site') || 'JSBHQ';
+async function initSiteDisplay(siteInfo) {
+  
   const siteDisplay = document.getElementById('siteDisplay');
-  if (siteDisplay) {
-    siteDisplay.textContent = site;
+  if (siteDisplay && siteInfo) {
+    siteDisplay.textContent = siteInfo.Name;
+  }
+
+  // Set site address
+  const siteAddress = document.getElementById('siteAddress');
+  if (siteAddress && siteInfo && siteInfo.Address) {
+    siteAddress.textContent = siteInfo.Address;
   }
   
   // Set today's date
   const dateDisplay = document.getElementById('dateDisplay');
   if (dateDisplay) {
     const today = new Date();
-    const dateString = today.toLocaleDateString('en-AU', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    });
+    
+    // Format: Tuesday, 22nd of March
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 
+                    'July', 'August', 'September', 'October', 'November', 'December'];
+    
+    const dayName = days[today.getDay()];
+    const day = today.getDate();
+    const monthName = months[today.getMonth()];
+    
+    // Add ordinal suffix (st, nd, rd, th)
+    let daySuffix = 'th';
+    if (day === 1 || day === 21 || day === 31) {
+      daySuffix = 'st';
+    } else if (day === 2 || day === 22) {
+      daySuffix = 'nd';
+    } else if (day === 3 || day === 23) {
+      daySuffix = 'rd';
+    }
+    
+    const dateString = `${dayName}, ${day}${daySuffix} of ${monthName}`;
     dateDisplay.textContent = dateString;
   }
-  
-  // Set contact information
-  const contact = siteContacts[site] || siteContacts['default'];
+
   const contactName = document.getElementById('contactButton');
-  // const contactNumber = document.getElementById('contactNumber');
-  if (contactName) {
-    contactName.textContent = contact.name + ' - ' + contact.number;
+  if (contactName && siteInfo && siteInfo.SiteContact) {
+    // Parse SiteContact to extract name and phone
+    // Format is typically "Name - Phone"
+    const contactParts = siteInfo.SiteContact.split(' - ');
+    const name = contactParts[0] || siteInfo.SiteContact;
+    const phone = contactParts[1] ? contactParts[1].trim() : '';
+    
+    // Store contact info for vCard download
+    contactInfo.name = name;
+    contactInfo.phone = phone;
+    
+    // Display only the name on the button
+    contactName.textContent = name;
+  }
+  
+}
+
+// Load induction content from separate file
+async function loadInductionContent(inductionData) {
+  const contentDiv = document.getElementById('inductionContent');
+  if (!contentDiv) return;
+  
+  try {
+    const response = await fetch('induction-content.html');
+    if (response.ok) {
+      const html = await response.text();
+      contentDiv.innerHTML = html;
+
+      // const data = inductionData.json();
+      
+      // Populate all fields with data-field attributes
+      const fields = document.querySelectorAll('[data-field]');
+      fields.forEach(field => {
+        const fieldKey = field.getAttribute('data-field');
+        if (fieldKey && inductionData[fieldKey] !== undefined) {
+          field.textContent = inductionData[fieldKey];
+        }
+      });
+    } else {
+      console.error('Failed to load induction content');
+    }
+  } catch (error) {
+    console.error('Error loading induction content:', error);
   }
 }
 
 // Download vCard function
 function downloadVCard() {
   const siteDisplay = document.getElementById('siteDisplay');
-  const contactName = document.getElementById('contactName');
-  const contactNumber = document.getElementById('contactNumber');
   
-  if (!siteDisplay || !contactName || !contactNumber) {
-    alert('Contact information not available');
+  if (!siteDisplay) {
+    showToast('Site information not available', 'error');
+    return;
+  }
+  
+  // Use stored contact information
+  const name = contactInfo.name || 'Site Contact';
+  const phone = contactInfo.phone ? contactInfo.phone.replace(/\s/g, '') : '';
+  
+  if (!phone) {
+    showToast('Phone number not available', 'error');
     return;
   }
   
   const site = siteDisplay.textContent;
-  const name = contactName.textContent;
-  const phone = contactNumber.textContent.replace(/\s/g, ''); // Remove spaces from phone number
   
   // Create vCard content
   const vCardContent = [
     'BEGIN:VCARD',
     'VERSION:3.0',
     `FN:${name}`,
-    `ORG:${site}`,
+    // `ORG:${site}`,
     `TEL;TYPE=CELL:${phone}`,
     'END:VCARD'
   ].join('\n');
@@ -142,154 +217,6 @@ function downloadVCard() {
   window.URL.revokeObjectURL(url);
 }
 
-// Terms and Conditions Functions (removed checkbox - terms agreed on submission)
-
-async function loadPdf() {
-  const loadingDiv = document.getElementById('pdfLoading');
-  const container = document.getElementById('pdfViewerContainer');
-  const canvas = document.getElementById('termsPdfCanvas');
-  
-  try {
-    // Ensure PDF.js is initialized
-    if (typeof pdfjsLib === 'undefined') {
-      loadingDiv.innerHTML = '<p style="color: #dc3545;">PDF viewer is still loading. Please wait...</p>';
-      return;
-    }
-    
-    // Ensure worker is set up
-    if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = './modules/pdfjs-5.4.449-dist/build/pdf.worker.mjs';
-    }
-    
-    loadingDiv.style.display = 'block';
-    container.style.display = 'flex';
-    
-    // PDF URL - replace with your actual terms PDF URL
-    const pdfUrl = './assets/test.pdf';
-    
-    // Load the PDF
-    const loadingTask = pdfjsLib.getDocument(pdfUrl);
-    pdfDoc = await loadingTask.promise;
-    totalPages = pdfDoc.numPages;
-    currentPage = 1;
-    
-    // Reset zoom and base scale
-    pdfScale = 1.0;
-    baseScale = 1.0;
-    
-    // Small delay to ensure container dimensions are calculated
-    await new Promise(resolve => setTimeout(resolve, 100));
-    
-    // Render first page
-    await renderPage(currentPage);
-    
-    // Update page controls
-    updatePageControls();
-    
-    loadingDiv.style.display = 'none';
-  } catch (error) {
-    console.error('Error loading PDF:', error);
-    loadingDiv.innerHTML = '<p style="color: #dc3545;">Error loading PDF. Please try again.</p>';
-    container.style.display = 'none';
-  }
-}
-
-async function renderPage(pageNum) {
-  const canvas = document.getElementById('termsPdfCanvas');
-  const container = document.getElementById('pdfViewerContainer');
-  const ctx = canvas.getContext('2d');
-  
-  try {
-    const page = await pdfDoc.getPage(pageNum);
-    
-    // Get the base viewport
-    const viewport = page.getViewport({ scale: 1 });
-    
-    // Calculate base scale to fit container width (with padding) on first load
-    if (baseScale === 1.0) {
-      const containerWidth = container.clientWidth || container.offsetWidth || 800;
-      const availableWidth = containerWidth - 40; // Account for padding (20px each side)
-      baseScale = Math.max(0.5, Math.min(2.0, availableWidth / viewport.width));
-      pdfScale = baseScale;
-    }
-    
-    // Apply zoom scale
-    const scale = baseScale * pdfScale;
-    
-    // Create scaled viewport
-    const scaledViewport = page.getViewport({ scale: scale });
-    
-    // Set canvas dimensions with device pixel ratio for crisp rendering
-    const outputScale = window.devicePixelRatio || 1;
-    canvas.width = Math.floor(scaledViewport.width * outputScale);
-    canvas.height = Math.floor(scaledViewport.height * outputScale);
-    
-    // Reset transform and scale the context to match device pixel ratio
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.scale(outputScale, outputScale);
-    
-    // Clear canvas
-    ctx.clearRect(0, 0, scaledViewport.width, scaledViewport.height);
-    
-    // Render PDF page into canvas context
-    const renderContext = {
-      canvasContext: ctx,
-      viewport: scaledViewport
-    };
-    
-    await page.render(renderContext).promise;
-    
-    // Update page info if element exists
-    const pageInfo = document.getElementById('pageInfo');
-    if (pageInfo) {
-      pageInfo.textContent = `Page ${pageNum} of ${totalPages}`;
-    }
-  } catch (error) {
-    console.error('Error rendering page:', error);
-  }
-}
-
-function previousPage() {
-  if (currentPage <= 1) return;
-  currentPage--;
-  renderPage(currentPage);
-  updatePageControls();
-}
-
-function nextPage() {
-  if (currentPage >= totalPages) return;
-  currentPage++;
-  renderPage(currentPage);
-  updatePageControls();
-}
-
-function updatePageControls() {
-  const prevBtn = document.getElementById('prevBtn');
-  const nextBtn = document.getElementById('nextBtn');
-  
-  if (prevBtn) {
-    prevBtn.disabled = currentPage <= 1;
-  }
-  if (nextBtn) {
-    nextBtn.disabled = currentPage >= totalPages;
-  }
-}
-
-function zoomIn() {
-  pdfScale = Math.min(3.0, pdfScale + 0.25);
-  renderPage(currentPage);
-}
-
-function zoomOut() {
-  pdfScale = Math.max(0.5, pdfScale - 0.25);
-  renderPage(currentPage);
-}
-
-function resetZoom() {
-  pdfScale = 1.0;
-  renderPage(currentPage);
-}
-
 function openSubmitModal() {
   const modal = document.getElementById('submitModal');
   if (!modal) return;
@@ -303,17 +230,12 @@ function openSubmitModal() {
   
   modal.style.display = 'flex';
   
+  // Prevent body scrolling when modal is open
+  document.body.style.overflow = 'hidden';
+  
   // Initialize signature pad when modal opens
   setTimeout(() => {
     initSignaturePad();
-    
-    // Load PDF when modal opens
-    if (typeof pdfjsLib !== 'undefined') {
-      loadPdf();
-    } else {
-      // Retry if PDF.js hasn't loaded yet
-      setTimeout(() => loadPdf(), 500);
-    }
   }, 100);
   
   // Close modal when clicking outside
@@ -328,31 +250,14 @@ function closeSubmitModal() {
   const modal = document.getElementById('submitModal');
   if (modal) {
     modal.style.display = 'none';
-    // Reset PDF state
-    pdfDoc = null;
-    currentPage = 1;
-    totalPages = 0;
+    // Restore body scrolling when modal is closed
+    document.body.style.overflow = '';
     // Clear signature
     if (signaturePad) {
       signaturePad.clear();
     }
-    // Reset terms agreement
-    termsAgreed = false;
   }
 }
-
-function closeTermsModal() {
-  const modal = document.getElementById('termsModal');
-  if (modal) {
-    modal.style.display = 'none';
-    // Reset PDF state
-    pdfDoc = null;
-    currentPage = 1;
-    totalPages = 0;
-  }
-}
-
-
 
 function clearSignature() {
   if (signaturePad) {
@@ -380,18 +285,18 @@ function addSafetyCard() {
   removeBtn.type = 'button';
   removeBtn.className = 'remove-card-btn';
   removeBtn.setAttribute('aria-label', 'Delete');
-  removeBtn.innerHTML = '<i data-lucide="trash-2"></i>';
+  const iconImg = document.createElement('img');
+  iconImg.src = './assets/trash-2.svg';
+  iconImg.alt = 'Delete';
+  iconImg.style.width = '24px';
+  iconImg.style.height = '24px';
+  removeBtn.appendChild(iconImg);
   removeBtn.onclick = function() { removeSafetyCard(this); };
   
   cardRow.appendChild(nameInput);
   cardRow.appendChild(numberInput);
   cardRow.appendChild(removeBtn);
   container.appendChild(cardRow);
-  
-  // Initialize Lucide icons in the new row
-  if (typeof lucide !== 'undefined') {
-    lucide.createIcons();
-  }
   
   // Show remove buttons if there's more than one card
   updateRemoveButtons();
@@ -405,98 +310,122 @@ function removeSafetyCard(button) {
 
 function updateRemoveButtons() {
   const container = document.getElementById('safetyCardsContainer');
+  if (!container) return;
+  
   const rows = container.querySelectorAll('.safety-card-row');
   
   rows.forEach((row, index) => {
     const removeBtn = row.querySelector('.remove-card-btn');
-    if (rows.length > 1) {
-      removeBtn.style.display = 'block';
-    } else {
-      removeBtn.style.display = 'none';
+    if (removeBtn) {
+      if (rows.length > 1) {
+        removeBtn.style.display = 'block';
+      } else {
+        removeBtn.style.display = 'none';
+      }
     }
   });
 }
 
 // Form Handling
 function resetForm() {
-  if (confirm('Are you sure you want to reset the form? All entered data will be lost.')) {
-    document.getElementById('inductionForm').reset();
-    if (signaturePad) {
-      signaturePad.clear();
-    }
-    
-    // Reset terms agreement
-    termsAgreed = false;
-    
-    // Reset safety cards to just one
-    const container = document.getElementById('safetyCardsContainer');
-    const rows = container.querySelectorAll('.safety-card-row');
-    for (let i = 1; i < rows.length; i++) {
-      rows[i].remove();
-    }
-    updateRemoveButtons();
+  document.getElementById('inductionForm').reset();
+  if (signaturePad) {
+    signaturePad.clear();
   }
+  
+  // Reset safety cards to just one
+  // const container = document.getElementById('safetyCardsContainer');
+  // const rows = container.querySelectorAll('.safety-card-row');
+  // for (let i = 1; i < rows.length; i++) {
+  //   rows[i].remove();
+  // }
+  // updateRemoveButtons();
 }
 
 function submitForm() {
-  // Automatically set terms as agreed when submitting
-  termsAgreed = true;
-  
   // Validate signature
   if (!signaturePad || signaturePad.isEmpty()) {
-    alert('Please provide a signature before submitting.');
+    showToast('Please provide a signature before submitting.', 'error');
     return;
   }
   
   // Collect form data
-  const additionalCards = [];
-  const cardRows = document.querySelectorAll('.safety-card-row');
-  cardRows.forEach(row => {
-    const nameInput = row.querySelector('.safety-card-name');
-    const numberInput = row.querySelector('.safety-card-number');
-    if (nameInput && numberInput) {
-      const name = nameInput.value.trim();
-      const number = numberInput.value.trim();
-      if (name || number) {
-        additionalCards.push({
-          name: name,
-          number: number
-        });
+  // const additionalCards = [];
+  // const cardRows = document.querySelectorAll('.safety-card-row');
+  // cardRows.forEach(row => {
+  //   const nameInput = row.querySelector('.safety-card-name');
+  //   const numberInput = row.querySelector('.safety-card-number');
+  //   if (nameInput && numberInput) {
+  //     const name = nameInput.value.trim();
+  //     const number = numberInput.value.trim();
+  //     if (name || number) {
+  //       additionalCards.push({
+  //         name: name,
+  //         number: number
+  //       });
+  //     }
+  //   }
+  // });
+  
+    // Parse date from display text (format: Tuesday, 22nd of March)
+    const dateText = document.getElementById('dateDisplay').innerText;
+    let parsedDate = new Date(); // Default to today if parsing fails
+    
+    if (dateText) {
+      // Extract day and month from format like "Tuesday, 22nd of March"
+      const match = dateText.match(/(\d+)(?:st|nd|rd|th)\s+of\s+(\w+)/);
+      if (match) {
+        const day = parseInt(match[1], 10);
+        const monthName = match[2];
+        const months = ['January', 'February', 'March', 'April', 'May', 'June', 
+                        'July', 'August', 'September', 'October', 'November', 'December'];
+        const month = months.indexOf(monthName);
+        
+        if (month !== -1) {
+          const year = new Date().getFullYear(); // Use current year
+          parsedDate = new Date(year, month, day);
+        }
       }
     }
-  });
+    
+    const formData = {
+      date: parsedDate ? parsedDate.toISOString() : dateText,
+      site: document.getElementById('siteDisplay').innerText,
+      fullName: document.getElementById('name').value,
+      phoneNumber: document.getElementById('phone').value,
+      whiteCardNumber: document.getElementById('whiteCard').value,
+      signature: signaturePad.toDataURL('image/png'),
+      timestamp: new Date().toISOString()
+    };
   
-  const formData = {
-    name: document.getElementById('name').value,
-    phone: document.getElementById('phone').value,
-    whiteCard: document.getElementById('whiteCard').value,
-    additionalCards: additionalCards,
-    signature: signaturePad.toDataURL('image/png'),
-    termsAgreed: termsAgreed,
-    timestamp: new Date().toISOString()
-  };
-  
-  // Log the form data (in a real application, you would send this to a server)
+  // Log the form data
   console.log('Form Data:', formData);
   
   // Close modal
   closeSubmitModal();
   
-  // Show success message
-  alert('Induction form submitted successfully!\n\nForm data has been logged to the console.');
+  // Show loading
+  setLoading(true);
   
-  // Optionally, you could send this to a server:
-  // fetch('/api/submit-induction', {
-  //   method: 'POST',
-  //   headers: { 'Content-Type': 'application/json' },
-  //   body: JSON.stringify(formData)
-  // })
-  // .then(response => response.json())
-  // .then(data => {
-  //   alert('Form submitted successfully!');
-  //   resetForm();
-  // })
-  // .catch(error => {
-  //   alert('Error submitting form. Please try again.');
-  // });
+  // Submit to server
+  fetch('https://default68237f8abf3c425bb92b9518c6d4bf.18.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/95a3332058cc435ba3dc09ec8454ab2e/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=uQZO00H7wt1z8RHqtiLH5mhVO30CboF2_wSHvH9uB-U', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(formData)
+  })
+  .then(response => {
+    if (!response.ok) {
+      throw new Error('Network response was not ok');
+    }
+  })
+  .then(() => {
+    setLoading(false);
+    showToast('Form submitted successfully!', 'success');
+    resetForm();
+  })
+  .catch(error => {
+    setLoading(false);
+    console.error('Error submitting form:', error);
+    showToast('Error submitting form. Please try again.', 'error');
+  });
 }
